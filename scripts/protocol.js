@@ -17,7 +17,7 @@ export async function verifyPacket(publicKey,packet) {
 }
 /** GM-only scene flag is the trust anchor; sender IDs in raw module sockets are never authority. */
 export class BriefingSocketService {
-  sequence = 0; received = new Map(); pending = new Map(); queue = Promise.resolve(); outgoing = Promise.resolve();
+  sequence = 0; received = new Map(); pending = new Map(); queue = Promise.resolve(); outgoing = Promise.resolve(); ackPaused = false;
   constructor(client) {
     this.client = client;
     game.socket.on(`module.${ID}`, packet => {
@@ -27,13 +27,15 @@ export class BriefingSocketService {
   }
   async begin(scene,briefing,targets,originalTiles) {
     if (!game.user.isActiveGM) throw new Error("The active GM must direct live briefings");
-    this.keys = await createSigningKey(); this.sequence = 0;
+    this.keys = await createSigningKey(); this.sequence = 0; this.ackPaused = false;
     const runtime = {id:uid(),briefingId:briefing.id,sceneId:scene.id,directorId:game.user.id,targets,publicKey:this.keys.publicKey,
       created:Date.now(),expires:Date.now()+43200000,originalTiles};
     await scene.setFlag(ID,"runtime",runtime); this.runtime = runtime; this.scene = scene; return runtime;
   }
   async send(kind,data = {}, targets = this.runtime?.targets ?? [], expectAck = false) {
     if (!this.runtime) return [];
+    if (kind === "pause") this.ackPaused = true;
+    if (kind === "resume" || kind === "stop") this.ackPaused = false;
     const body = {version:1,sessionId:this.runtime.id,briefingId:this.runtime.briefingId,sceneId:this.runtime.sceneId,directorId:game.user.id,
       sequence:++this.sequence,messageId:uid(),kind,targets,data,sentAt:Date.now()};
     let pending;
@@ -47,10 +49,13 @@ export class BriefingSocketService {
     this.outgoing = emission.catch(() => {});
     await emission;
     if (!pending) return [];
-    const timeout = Date.now() + (kind === "start" ? 18000 : 7000);
-    while (pending.waiting.size && Date.now() < timeout && this.runtime?.id === body.sessionId) {
+    const movement = kind === "step" && data.step?.type === "camera" && data.step.data.motion === "smooth" ? data.step.data.moveDuration : 0;
+    const timeout = kind === "start" ? 18000 : 7000 + movement;
+    let elapsed = 0, previous = performance.now();
+    while (pending.waiting.size && elapsed < timeout && this.runtime?.id === body.sessionId) {
       for (const id of pending.waiting) if (!game.users.get(id)?.active) pending.waiting.delete(id);
       await sleep(50);
+      const now = performance.now(); if (!this.ackPaused) elapsed += now-previous; previous = now;
     }
     this.pending.delete(body.messageId);
     if (pending.waiting.size) warn(`Briefing: no ${kind} response from ${[...pending.waiting].map(id => game.users.get(id)?.name).join(", ")}. Continuing.`);

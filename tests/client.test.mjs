@@ -34,3 +34,17 @@ test("watchdog restores local state after director disappearance",async()=>{
   const {client,calls}=fixture();await client.start({id:"s",sceneId:"scene",directorId:"gm"});
   game.users.get("gm").active=false;client.tick();await Promise.resolve();assert.equal(client.session,null);assert.ok(calls.some(x=>x[0]==="restore"));clearInterval(client.timer);
 });
+test("Stop during a moving camera cannot reapply its post-move locks",async()=>{
+  const {client,calls}=fixture();await client.start({id:"s",sceneId:"scene",directorId:"gm"});
+  let finish;
+  client.adapter.move=()=>new Promise(resolve=>{finish=resolve;});client.adapter.cancel=async()=>finish?.(false);
+  const s=step("camera");s.data.lockPan=s.data.lockZoom=true;
+  const moving=client.execute(s);await client.cleanup(true);await moving;
+  assert.equal(calls.filter(x=>x[0]==="locks").length,0);assert.equal(client.session,null);clearInterval(client.timer);
+});
+test("cleanup restores the snapshot even if a pending camera call fails during cancellation",async()=>{
+  const {client,calls}=fixture();await client.start({id:"s",sceneId:"scene",directorId:"gm"});
+  client.adapter.cancel=async()=>{throw new Error("pending camera failure");};
+  await assert.rejects(()=>client.cleanup(true),/pending camera failure/);
+  assert.ok(calls.some(x=>x[0]==="restore"&&x[1].locks));assert.equal(client.snapshot,null);clearInterval(client.timer);
+});

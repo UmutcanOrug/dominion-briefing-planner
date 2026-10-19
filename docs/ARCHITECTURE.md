@@ -27,9 +27,13 @@ Sources were inspected before implementation on 19 October 2026:
 
 ## Lock View findings
 
-`lockView.socket.setViewDialog(data, users)` iterates recipients and calls `onSetViewDialog` locally or emits to the dependency socket. Its coordinate checks are truthy, so a destination with zero X or Y is not handled reliably. It also exposes no smooth-movement duration. Dominion instead uses the dependency's `onSetView({type:'absolute', position, width})` locally after verifying a Dominion signed command. Its absolute position is a top-left coordinate, which the adapter derives from the requested center, zoom and each client's viewport size.
+`lockView.socket.setViewDialog(data, users)` iterates recipients and calls `onSetViewDialog` locally or emits to the dependency socket. Its coordinate checks are truthy, so a destination with zero X or Y is not handled reliably. It exposes no smooth-movement duration parameter. Dominion instead uses the dependency's `onSetView({type:'absolute', position, width})` locally after verifying a Dominion signed command. Its absolute position is a top-left coordinate, which the adapter derives from the requested center, zoom and each client's viewport size.
 
 `onSetView` temporarily disables `locks.applyLocks`, pans, emits a viewbox and restores that toggle. Dominion adds a `finally` guard because the upstream method can return early or fail before restoration. Absolute zoom is limited to 3 by that source. `locks.update(patch, {fromSocket:true, save:false})` applies a client-local lock without broadcasting or persisting it; no changes to the user's `Enable` preference are forced.
+
+Version 1.1 adds a cancelable animation-frame interpolation inside the adapter. Each intermediate center/zoom is applied using the unchanged `onSetView` handler; `applyLocks` is restored per call instead of being disabled for the entire transition. Only one position call is in flight. Pause freezes elapsed movement time, Next completes the destination, and Stop waits for an in-flight call before restoration. Pending moves have generation guards so cancellation cannot start a delayed animation. Step acknowledgements include movement time in their timeout budget and freeze while paused.
+
+A source-contract check also executed the **actual v2.1.0** `Socket.onSetView`, `Locks` class and `addLockOverrides` pan wrapper inside a simulated Foundry environment. Intermediate positions worked with pan/zoom locks enabled, and ordinary player pans remained blocked between frames. This is not a real WebGL/multiplayer test.
 
 Do not treat the guarded 2.x internal integration as a guaranteed public API. A module version outside 2.x or missing required methods fails clearly. No core wrappers, dependency source changes or custom replacement camera locks exist here.
 

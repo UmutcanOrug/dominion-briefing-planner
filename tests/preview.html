@@ -11,7 +11,17 @@ const notice=message=>{const el=document.querySelector("#notifications");el.text
 globalThis.ui={notifications:{info:notice,warn:notice,error:notice}};
 const view=document.querySelector("canvas");
 globalThis.canvas={ready:true,scene,app:{canvas:view,screen:{width:1600,height:1000}},stage:{worldTransform:{apply:({x,y})=>({x,y}),applyInverse:({x,y})=>({x,y})}},tiles:{controlled:[],activate(){},releaseAll(){},get(){}},activeLayer:{activate(){}}};
-globalThis.lockView={Helpers:{getUserSetting:()=>true},locks:{pan:false,zoom:false,applyLocks:true,get(){return{pan:this.pan,zoom:this.zoom,boundingBox:false}},update(p){Object.assign(this,p)}},socket:{async onSetView(d){scene._viewPosition={x:d.position.x+d.width/2,y:d.position.y+window.innerHeight/(window.innerWidth/d.width)/2,scale:window.innerWidth/d.width}}}};
+globalThis.lockView={Helpers:{getUserSetting:()=>true},locks:{pan:false,zoom:false,applyLocks:true,get(){return{pan:this.pan,zoom:this.zoom,boundingBox:false}},update(p){Object.assign(this,p)}},socket:{async onSetView(d){scene._viewPosition={x:d.position.x+d.width/2,y:d.position.y+window.innerHeight/(window.innerWidth/d.width)/2,scale:window.innerWidth/d.width};drawMap();}}};
+function drawMap(){
+ view.width=window.innerWidth;view.height=window.innerHeight;canvas.app.screen={width:view.width,height:view.height};
+ const ctx=view.getContext("2d"),p=scene._viewPosition;
+ ctx.fillStyle="#172326";ctx.fillRect(0,0,view.width,view.height);
+ ctx.setTransform(p.scale,0,0,p.scale,view.width/2-p.x*p.scale,view.height/2-p.y*p.scale);
+ ctx.strokeStyle="#344741";ctx.lineWidth=1;for(let x=0;x<=1600;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,1000);ctx.stroke();}for(let y=0;y<=1000;y+=60){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(1600,y);ctx.stroke();}
+ ctx.strokeStyle="#365c68";ctx.lineWidth=45;ctx.beginPath();ctx.moveTo(550,0);ctx.bezierCurveTo(900,400,500,700,850,1000);ctx.stroke();
+ ctx.fillStyle="#b4c3aa";ctx.font="16px monospace";ctx.fillText("NORTHERN FRONT",700,210);ctx.fillText("MONTREVIA CROSSING",750,480);ctx.fillText("IMPERIAL DEFENSIVE LINE",250,800);
+}
+canvas.stage.worldTransform={apply:({x,y})=>({x:window.innerWidth/2+(x-scene._viewPosition.x)*scene._viewPosition.scale,y:window.innerHeight/2+(y-scene._viewPosition.y)*scene._viewPosition.scale}),applyInverse:({x,y})=>({x:scene._viewPosition.x+(x-window.innerWidth/2)/scene._viewPosition.scale,y:scene._viewPosition.y+(y-window.innerHeight/2)/scene._viewPosition.scale})};drawMap();
 class ApplicationV2 {
  constructor(){this.rendered=false}
  async render(){if(!this.element){this.element=document.createElement("section");this.element.className="application dbp-planner";document.body.append(this.element)}this.element.innerHTML=`<header class="window-header">DOMINION // MISSION DIRECTOR</header><div class="window-content"><div class="dbp-shell">${(await this._prepareContext()).body}</div></div>`;this.rendered=true;this._onRender({},{});return this}
@@ -29,6 +39,6 @@ p.steps=[cam,dialogue,ping,tiles,wait,second];scene.flags.plans=[p];
 const {ClientPlayback}=await import("/scripts/client.js"),{BriefingPlayer}=await import("/scripts/player.js"),{BriefingPlannerApp}=await import("/scripts/planner-app.js");
 const client=new ClientPlayback();let app;
 const player=new BriefingPlayer({cancelPending(){}},client,()=>app?.rendered&&app.render());
-app=new BriefingPlannerApp(player);app.stepId=dialogue.id;await app.render();
+app=new BriefingPlannerApp(player);app.stepId=new URLSearchParams(location.search).get("step")==="camera"?cam.id:dialogue.id;await app.render();
 </script></html>
 

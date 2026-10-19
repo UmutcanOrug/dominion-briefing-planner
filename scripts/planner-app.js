@@ -45,7 +45,7 @@ export class BriefingPlannerApp extends HandlebarsApplicationMixin(ApplicationV2
     if (["camera","ping"].includes(s.type)) {
       html += `<div class="dbp-pair">${this.field("x",d.x,"number")}${this.field("y",d.y,"number")}</div>${btn("pick","Pick","fa-crosshairs")}`;
     }
-    if (s.type === "camera") html += this.field("scale",d.scale,"number","data",'min="0.05" max="3"')+btn("capture","Capture","fa-camera")+this.field("lockPan",d.lockPan,"checkbox")+this.field("lockZoom",d.lockZoom,"checkbox")+`<p class="dbp-note">${e(t("CameraLimit"))}</p><details><summary>${e(t("CameraTargets"))}</summary>${game.users.filter(u=>!u.isGM).map(u=>`<label class="dbp-user"><input type="checkbox" data-camera-user="${u.id}" ${d.targets.includes(u.id)?"checked":""}>${e(u.name)}</label>`).join("")}</details>`;
+    if (s.type === "camera") html += this.field("scale",d.scale,"number","data",'min="0.05" max="3"')+btn("capture","Capture","fa-camera")+this.select("motion",["smooth","instant"],d.motion)+this.field("moveDuration",d.moveDuration,"number","data",'min="0" max="60000"')+this.select("easing",["easeInOut","linear"],d.easing)+this.field("lockPan",d.lockPan,"checkbox")+this.field("lockZoom",d.lockZoom,"checkbox")+`<p class="dbp-note">${e(t("CameraLimit"))}</p><details><summary>${e(t("CameraTargets"))}</summary>${game.users.filter(u=>!u.isGM).map(u=>`<label class="dbp-user"><input type="checkbox" data-camera-user="${u.id}" ${d.targets.includes(u.id)?"checked":""}>${e(u.name)}</label>`).join("")}</details>`;
     if (s.type === "dialogue") {
       html += `<label class="dbp-field"><span>${e(t("Presets"))}</span><select data-preset><option value="">${e(t("SelectPreset"))}</option>${this.plan.presets.map(p=>`<option value="${p.id}">${e(p.name)}</option>`).join("")}</select></label><div class="dbp-pair">${btn("savePreset","SavePreset","fa-user-plus")}${btn("deletePreset","DeletePreset","fa-user-minus")}</div>`;
       for (const k of ["speaker","subtitle","portrait"]) html += this.field(k,d[k])+(k==="portrait"?btn("file:portrait","Browse","fa-folder-open"):"");
@@ -65,7 +65,15 @@ export class BriefingPlannerApp extends HandlebarsApplicationMixin(ApplicationV2
     super._onRender(context,options);
     const root = this.element.querySelector(".dbp-shell");
     root.addEventListener("click",event=> { const button=event.target.closest("[data-cmd]"); if (button && !button.disabled) this.command(button.dataset.cmd,button).catch(error); });
+    root.addEventListener("input",event => this.readInput(event.target));
     root.addEventListener("change",event => this.change(event).catch(error));
+  }
+  readInput(el) {
+    if (this.player.active || !this.plan) return;
+    if (el.matches("[data-plan-name]")) { this.plan.name = el.value.slice(0,150); this.dirty = true; }
+    if (!el.dataset.field) return;
+    const target = el.dataset.scope === "settings" ? this.plan.settings : el.dataset.scope === "step" ? this.selected : this.selected?.data;
+    if (target && Object.hasOwn(target,el.dataset.field)) { target[el.dataset.field] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value; this.dirty = true; }
   }
   mark() { this.dirty = true; this.render(); }
   async change(event) {
@@ -76,16 +84,12 @@ export class BriefingPlannerApp extends HandlebarsApplicationMixin(ApplicationV2
       const imported = BriefingStorage.import(await file.text(),this.scene); this.plans.push(imported); this.planId = imported.id; this.stepId = null; this.mark(); return;
     }
     if (!this.plan) return;
-    if (el.matches("[data-plan-name]")) this.plan.name = el.value.slice(0,150);
+    this.readInput(el);
     if (el.dataset.user) { this.plan.targets = this.plan.targets.filter(id=>id!==el.dataset.user); if (el.checked) this.plan.targets.push(el.dataset.user); }
     if (el.dataset.cameraUser && this.selected) { this.selected.data.targets = this.selected.data.targets.filter(id=>id!==el.dataset.cameraUser); if (el.checked) this.selected.data.targets.push(el.dataset.cameraUser); }
     if (el.matches("[data-preset]") && this.selected) {
       const preset = this.plan.presets.find(p=>p.id===el.value);
       if (preset) this.selected.data = {...clone(preset.data),message:this.selected.data.message,preset:preset.id};
-    }
-    if (el.dataset.field) {
-      const target = el.dataset.scope === "settings" ? this.plan.settings : el.dataset.scope === "step" ? this.selected : this.selected?.data;
-      if (target && Object.hasOwn(target,el.dataset.field)) target[el.dataset.field] = el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value;
     }
     this.mark();
   }
@@ -118,7 +122,7 @@ export class BriefingPlannerApp extends HandlebarsApplicationMixin(ApplicationV2
     if (cmd === "deletePreset" && s) { p.presets=p.presets.filter(x=>x.id!==s.data.preset); s.data.preset=""; }
     if (["play","preview","previewStep"].includes(cmd)) { await this.player.play(p,this.scene,{preview:cmd!=="play",onlyStep:cmd==="previewStep"?s.id:null}); return; }
     if (cmd === "pause") { await this.player.pause(); return; }
-    if (cmd === "next") { this.player.next(); return; }
+    if (cmd === "next") { await this.player.next(); return; }
     if (cmd === "stop") { await this.player.stop(); return; }
     this.mark();
   }

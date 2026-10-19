@@ -76,9 +76,11 @@ export class BriefingPlayer {
     if (!this.active || this.status === "starting") return;
     this.clock.paused = !this.clock.paused;
     this.status = this.clock.paused ? "paused" : (this.briefing.steps[this.index]?.timing === "manual" ? "waiting" : "playing");
-    if (this.preview) this.client.pause(this.clock.paused); else await this.socket.send(this.clock.paused ? "pause" : "resume"); this.changed();
+    if (this.preview) this.client.pause(this.clock.paused); else await this.socket.send(this.clock.paused ? "pause" : "resume");
+    if (!this.clock.paused && this.skip) await this.skipEffect(); this.changed();
   }
-  next() { if (this.active) this.skip = true; }
+  async skipEffect() { if (this.preview) await this.client.adapter?.finish?.(); else await this.socket.send("skip"); }
+  async next() { if (this.active) { this.skip = true; if (!this.clock.paused) await this.skipEffect(); } }
   async stop() {
     if (!this.active) return;
     this.stopping = true; this.clock.cancelled = true; this.status = "stopping"; this.changed();

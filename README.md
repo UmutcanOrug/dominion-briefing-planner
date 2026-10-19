@@ -28,7 +28,7 @@ Forge also supports custom package upload through its Import Wizard. If using th
 1. Click **Create** and edit the briefing name above the timeline.
 2. Add Camera, Dialogue, Map Ping, Tile Visibility, Wait / Delay, or View Locks. New actions are inserted after the selected step. Move them with the arrow buttons.
 3. Select a card to edit its properties. Every action can be enabled, disabled, duplicated, or removed.
-4. For cameras, position the GM view and click **Capture Camera Position**, or use **Pick Position on Map**. Coordinates are scene coordinates. Map selection cancels with Escape and automatically expires.
+4. For cameras, position the GM view and click **Capture Camera Position**, or use **Pick Position on Map**. Choose **Smooth pan and zoom**, set **Camera movement time** (default 2000 ms), and choose smooth start/finish or constant speed. Choose **Instant** for a cut. Coordinates are scene coordinates. Map selection cancels with Escape and automatically expires.
 5. For dialogue, choose a portrait, name, text, style and timing. **Save Speaker** creates a reusable preset in this briefing. Applying a preset copies its values; later overrides do not modify other steps. Duplicate a briefing or export/import it to carry presets to another scene.
 6. For tile steps, click **Select Tiles on Map**, select existing tiles (Shift for multiple), then confirm in the floating toolbar. Tile IDs stay stable across saves. Missing tiles are reported.
 7. Select all connected players on this scene, or choose individual players. Enable scene pull to move selected players who are viewing another scene. Each client waits for its own canvas before camera commands.
@@ -40,11 +40,11 @@ Use **Preview Locally** for the whole timeline or **Preview Step** for the selec
 ## Timing and controls
 
 - **Continue immediately:** execute, then advance. Give dialogue a wait mode if it needs to stay visible.
-- **Duration / hold:** wait the configured milliseconds after execution. For cameras this is a hold after an instant transition.
+- **Duration / hold:** wait the configured milliseconds after execution. For cameras this is an additional hold after the movement finishes; **Camera movement time** controls the actual travel.
 - **Automatic dialogue:** use an explicit duration if provided; otherwise wait for typing/voiceover and the optional hold time. Audio metadata loads have a bounded timeout; unplayable audio falls back to text timing. Audio-synchronized reveal spreads characters over the voiceover duration.
 - **Wait for GM Next:** keep the action active until the director presses Next.
-- **Pause / Resume:** suspend timeline waits, text reveal, marker lifetimes, pulse animation and audio where browser playback permits. Next while paused is applied after Resume.
-- **Next:** skip the current timed/manual wait. In-flight document writes and network acknowledgements are allowed to settle safely.
+- **Pause / Resume:** suspend camera movement, timeline waits, text reveal, marker lifetimes, pulse animation and audio where browser playback permits. Next while paused is applied after Resume.
+- **Next:** complete an active camera move at its destination and skip the current timed/manual wait. In-flight document writes and network acknowledgements are allowed to settle safely.
 - **Stop:** cancel progression, remove overlays/markers and restore captured client/tile state.
 - **Previous:** explicitly disabled in v1; stop and replay from the beginning to preserve deterministic state.
 
@@ -54,9 +54,9 @@ The active GM directs live playback. Other GMs can edit or preview. The current 
 
 The dependency's actual module ID is `LockView`. The adapter was inspected against released **2.1.0** and upstream **2.1.1_pre1** source. It accepts 2.x versions only when required runtime methods exist. This is a guarded integration with **internal methods**, not a claim of a stable upstream API. See [source review](docs/ARCHITECTURE.md).
 
-The adapter calls Lock View's local absolute camera handler and local lock updater. It converts center/zoom into each client's viewport coordinates, supports destinations with zero X/Y, and restores `applyLocks` in `finally`. No Lock View source imports, world setting writes, scene lock flag writes, token movement, or core monkey patches are used.
+The adapter calls Lock View's local absolute camera handler and local lock updater. Smooth movement interpolates center and zoom on animation frames and applies each position through that same handler. Lock View's `applyLocks` is restored after every call; it is never disabled for the whole movement. Pause cancels scheduled frames, Next finishes at the target, and Stop drains an in-flight call before restoring the original camera. It converts center/zoom into each client's viewport coordinates, supports destinations with zero X/Y, and restores `applyLocks` in `finally`. No Lock View source imports, world setting writes, scene lock flag writes, token movement, or core monkey patches are used.
 
-Camera transitions are **instant**, with zoom restricted to **0.05–3** by the dependency. No smooth movement/easing is advertised. Different browser sizes share a center and scale, not an identical visible rectangle. Original zooms outside Lock View's supported absolute range cannot be restored by that handler. Avoid those zooms when using restoration. Configure a Duration hold for cinematic pacing.
+Camera transitions default to **smooth pan and zoom over 2000 ms**, with configurable movement time (0–60000 ms) and either cosine ease in/out or linear interpolation. Existing saved camera steps receive these defaults when loaded; select Instant to retain a cut. Zoom remains restricted to **0.05–3** by the dependency. Different browser sizes share a center and scale, not an identical visible rectangle. Original zooms outside Lock View's supported absolute range cannot be restored by that handler. Avoid those zooms when using restoration. Use Camera movement time for travel speed and a separate Duration hold for pacing after arrival.
 
 Other v1 limits: one scene per timeline; no safe backward navigation; no tile fades; local tile preview is skipped; presets are per briefing; no chat output; no late-join resynchronization; browser autoplay/CORS restrictions can suppress audio. Timing is synchronized by ordered commands and acknowledgements, not sample-accurate audio scheduling. A player's frozen tab may fall behind until the next step or watchdog cleanup.
 

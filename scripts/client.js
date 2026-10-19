@@ -23,6 +23,7 @@ export class ClientPlayback {
     if (body.kind === "heartbeat") return;
     if (body.kind === "stop") return this.cleanup(body.data.emergency,body.data.settings);
     if (body.kind === "pause" || body.kind === "resume") { this.pause(body.kind === "pause"); return; }
+    if (body.kind === "skip") { await this.adapter.finish?.(); return; }
     if (body.kind === "clear") { this.overlay.clear(); return; }
     if (body.kind === "step") { await this.ready; if (this.session?.id === body.sessionId) await this.execute(normalizeStep(body.data.step)); }
   }
@@ -45,11 +46,12 @@ export class ClientPlayback {
   }
   async execute(s) {
     if (!this.session || canvas.scene?.id !== this.session.sceneId) return;
+    const session = this.session;
     this.overlay.clear();
     const d = clone(s.data);
     if (s.type === "camera" && (!d.targets.length || d.targets.includes(game.user.id) || this.session.preview)) {
-      await this.adapter.move(d);
-      if (d.lockPan || d.lockZoom) this.adapter.locks({...(d.lockPan?{pan:true}:{}),...(d.lockZoom?{zoom:true}:{})},this.session.preview);
+      const completed = await this.adapter.move(d);
+      if (completed !== false && this.session === session && (d.lockPan || d.lockZoom)) this.adapter.locks({...(d.lockPan?{pan:true}:{}),...(d.lockZoom?{zoom:true}:{})},session.preview);
     }
     if (s.type === "dialogue") this.overlay.show(d);
     if (s.type === "ping") { this.effects.ping(d); if (d.pull) await this.adapter.move({...d,scale:canvas.scene._viewPosition.scale}); }
@@ -57,10 +59,15 @@ export class ClientPlayback {
     if (s.type === "tiles" && this.session.preview) warn("Local preview: tile document updates are skipped.");
     if (this.paused) { this.overlay.pause(true); this.effects.pause(true); }
   }
-  pause(paused) { this.paused = paused; this.overlay.pause(paused); this.effects.pause(paused); }
+  pause(paused) { this.paused = paused; this.adapter.pause?.(paused); this.overlay.pause(paused); this.effects.pause(paused); }
   async cleanup(emergency = true, settings = {}) {
     this.session = null; this.overlay.clear(); this.effects.clear(); this.paused = false;
     const snapshot = this.snapshot; this.snapshot = null;
-    if (snapshot) await this.adapter.restore(snapshot,{camera:settings.skipCamera !== true && canvas.scene?.id===this.snapshotSceneId && (emergency || settings.restoreCamera !== false),locks:emergency || settings.restoreLocks !== false});
+    const snapshotSceneId = this.snapshotSceneId;
+    let cancellationError;
+    try { await this.adapter.cancel?.(); } catch(e) { cancellationError = e; }
+    this.adapter.pause?.(false);
+    if (snapshot) await this.adapter.restore(snapshot,{camera:settings.skipCamera !== true && canvas.scene?.id===snapshotSceneId && (emergency || settings.restoreCamera !== false),locks:emergency || settings.restoreLocks !== false});
+    if (cancellationError) throw cancellationError;
   }
 }

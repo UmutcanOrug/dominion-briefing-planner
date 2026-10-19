@@ -24,7 +24,7 @@ export function normalizeStep(raw) {
   if (!raw || !TYPES.includes(raw.type)) throw new Error("Unknown timeline action");
   const d = raw.data ?? {};
   let data;
-  if (raw.type === "camera") data = {x:n(d.x), y:n(d.y), scale:n(d.scale,1,0.05,3), lockPan:!!d.lockPan, lockZoom:!!d.lockZoom, targets:ids(d.targets)};
+  if (raw.type === "camera") data = {x:n(d.x), y:n(d.y), scale:n(d.scale,1,0.05,3), motion:choice(d.motion,["smooth","instant"],"smooth"), moveDuration:n(d.moveDuration,2000,0,60000), easing:choice(d.easing,["easeInOut","linear"],"easeInOut"), lockPan:!!d.lockPan, lockZoom:!!d.lockZoom, targets:ids(d.targets)};
   if (raw.type === "dialogue") data = {
     speaker:str(d.speaker || "Command", 150), subtitle:str(d.subtitle,150), portrait:asset(d.portrait), message:str(d.message,20000),
     style:choice(d.style,["military","radio","imperial"],"military"), font:choice(d.font,["sans-serif","serif","monospace"],"sans-serif"),

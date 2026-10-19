@@ -38,3 +38,13 @@ test("normal keep-final completion preserves tile changes",async()=>{
   const {player,scene}=fixture();const p=plan("scene");p.settings.tileFinish="keep";const s=step("tiles");s.data={tileIds:["tile"],operation:"show"};p.steps=[s];
   await player.play(p,scene);assert.equal(scene.tiles.get("tile").hidden,false);clearInterval(player.timer);
 });
+test("preview waits for camera arrival and Next completes movement before following steps",async()=>{
+  const {player,scene,calls}=fixture();const p=plan("scene");p.steps=[step("camera"),step("lock")];
+  let arrive;
+  player.client.execute=async s=>{calls.push(["preview-step",s.type]);if(s.type==="camera")await new Promise(resolve=>{arrive=resolve;});};
+  player.client.adapter={finish:async()=>arrive?.()};
+  const playing=player.play(p,scene,{preview:true});while(!arrive)await new Promise(r=>setTimeout(r,1));
+  assert.deepEqual(calls.filter(x=>x[0]==="preview-step").map(x=>x[1]),["camera"]);
+  await player.next();await playing;
+  assert.deepEqual(calls.filter(x=>x[0]==="preview-step").map(x=>x[1]),["camera","lock"]);clearInterval(player.timer);
+});
