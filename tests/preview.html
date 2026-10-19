@@ -1,0 +1,34 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Dominion Briefing Planner — UI verification</title>
+<link rel="stylesheet" href="/styles/briefing.css"><style>
+*{box-sizing:border-box}body{margin:0;background:#12191b;color:#dce2dd;font-family:Arial,sans-serif}#map{position:absolute;inset:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,transparent,transparent 59px,#48524c33 60px),repeating-linear-gradient(90deg,transparent,transparent 59px,#48524c33 60px),linear-gradient(130deg,#25332c,#182429 50%,#2e3930)}#note{position:absolute;bottom:16px;left:20px;font:12px monospace;color:#9aa99f}.application{position:absolute;top:30px;left:40px;width:min(1120px,calc(100vw - 80px));height:calc(100vh - 85px);border:1px solid #4d5758;border-radius:5px;box-shadow:0 15px 70px #0009;overflow:hidden}.window-header{height:32px;display:flex;align-items:center;padding:0 12px;background:#242d2f;font:12px Arial;color:#a7b3ae}.window-content{height:calc(100% - 32px)}button{font:inherit}fieldset{border:0}.dbp-selection{font:13px Arial}#notifications{position:fixed;top:4px;left:50%;transform:translateX(-50%);z-index:20000;font:12px Arial;background:#283735;color:white;padding:4px 15px;border-radius:4px}#notifications:empty{display:none}
+</style><canvas id="map" width="1600" height="1000"></canvas><div id="note">UI verification fixture · Foundry APIs are simulated · not a live Foundry test</div><div id="notifications"></div>
+<script type="module">
+const language=new URLSearchParams(location.search).get("lang")||"en", translations=(await (await fetch(`/lang/${language}.json`)).json()).DBP;
+const scene={id:"montrevia",name:"Montrevia River",tiles:new Map([["enemy1",{hidden:true}],["enemy2",{hidden:true}]]),_viewPosition:{x:800,y:500,scale:1},flags:{},getFlag(ns,key){return this.flags[key]},async setFlag(ns,key,v){this.flags[key]=structuredClone(v)},async unsetFlag(ns,key){delete this.flags[key]},async updateEmbeddedDocuments(){throw new Error("Preview must not write documents")}};
+const users=[{id:"gm",isGM:true,isActiveGM:true,active:true,name:"Director",viewedScene:scene.id},{id:"p1",isGM:false,active:true,name:"Auran Command",viewedScene:scene.id},{id:"p2",isGM:false,active:false,name:"Razinsk Officer",viewedScene:"other"}];users.get=id=>users.find(u=>u.id===id);users.activeGM=users[0];
+globalThis.game={user:users[0],users,scenes:new Map([[scene.id,scene]]),modules:new Map([["LockView",{active:true,version:"2.1.0"}]]),i18n:{localize:k=>translations[k.replace("DBP.","")]??k},socket:{on(){},emit(){throw new Error("Preview must not broadcast")}}};
+const notice=message=>{const el=document.querySelector("#notifications");el.textContent=message;setTimeout(()=>el.textContent="",4000)};
+globalThis.ui={notifications:{info:notice,warn:notice,error:notice}};
+const view=document.querySelector("canvas");
+globalThis.canvas={ready:true,scene,app:{canvas:view,screen:{width:1600,height:1000}},stage:{worldTransform:{apply:({x,y})=>({x,y}),applyInverse:({x,y})=>({x,y})}},tiles:{controlled:[],activate(){},releaseAll(){},get(){}},activeLayer:{activate(){}}};
+globalThis.lockView={Helpers:{getUserSetting:()=>true},locks:{pan:false,zoom:false,applyLocks:true,get(){return{pan:this.pan,zoom:this.zoom,boundingBox:false}},update(p){Object.assign(this,p)}},socket:{async onSetView(d){scene._viewPosition={x:d.position.x+d.width/2,y:d.position.y+window.innerHeight/(window.innerWidth/d.width)/2,scale:window.innerWidth/d.width}}}};
+class ApplicationV2 {
+ constructor(){this.rendered=false}
+ async render(){if(!this.element){this.element=document.createElement("section");this.element.className="application dbp-planner";document.body.append(this.element)}this.element.innerHTML=`<header class="window-header">DOMINION // MISSION DIRECTOR</header><div class="window-content"><div class="dbp-shell">${(await this._prepareContext()).body}</div></div>`;this.rendered=true;this._onRender({},{});return this}
+ _onRender(){} async _preClose(){} async minimize(){this.element.style.display="none"}async maximize(){this.element.style.display=""}
+}
+globalThis.foundry={applications:{api:{ApplicationV2,HandlebarsApplicationMixin:Class=>Class,DialogV2:{confirm:async options=>confirm(options.content.replace(/<[^>]*>/g,""))}}}};
+const {plan,step}=await import("/scripts/core.js");
+const p=plan(scene.id,"Operation Northern Shield");p.targets=["p1"];
+const cam=step("camera");cam.label="Northern front";cam.data={...cam.data,x:820,y:250,scale:1.2,lockPan:true,lockZoom:true};cam.timing="duration";cam.duration=1000;
+const dialogue=step("dialogue");dialogue.data.speaker="General Vestinus";dialogue.data.subtitle="IMPERIAL HIGH COMMAND";dialogue.data.message="Razinsk forces have crossed the Montrevia River. Our forward defenses are now engaged.";
+const ping=step("ping");ping.label="River crossing";ping.data={...ping.data,x:760,y:430,label:"ENEMY CROSSING"};ping.timing="duration";ping.duration=1500;
+const tiles=step("tiles");tiles.label="Reveal enemy army";tiles.data.tileIds=["enemy1","enemy2"];
+const wait=step("wait");const second=step("dialogue");second.data.speaker="Imperial Command";second.data.message="The Imperial Army will hold this line. Reinforcements are already on their way.";
+p.steps=[cam,dialogue,ping,tiles,wait,second];scene.flags.plans=[p];
+const {ClientPlayback}=await import("/scripts/client.js"),{BriefingPlayer}=await import("/scripts/player.js"),{BriefingPlannerApp}=await import("/scripts/planner-app.js");
+const client=new ClientPlayback();let app;
+const player=new BriefingPlayer({cancelPending(){}},client,()=>app?.rendered&&app.render());
+app=new BriefingPlannerApp(player);app.stepId=dialogue.id;await app.render();
+</script></html>
+
